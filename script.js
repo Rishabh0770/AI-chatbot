@@ -1,170 +1,144 @@
-let prompt = document.querySelector("#prompt");
-let submitbtn = document.querySelector("#submit");
-let chatContainer = document.querySelector(".chat-container");
-let imagebtn = document.querySelector("#image");
-let image = document.querySelector("#image img");
-let imageinput = document.querySelector("#image input");
-
+const promptInput = document.querySelector("#prompt");
+const submitBtn = document.querySelector("#submit");
+const chatContainer = document.querySelector(".chat-container");
+const imageBtn = document.querySelector("#image");
+const imageInput = imageBtn.querySelector("input");
+const imagePreview = imageBtn.querySelector("img");
 const startVoiceBtn = document.querySelector("#start-voice");
 const stopVoiceBtn = document.querySelector("#stop-voice");
 
-const Api_Url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDV6-qOyHvYLM-fogPGnrVQWxwA4jAO4n4";
+const API_KEY = "AIzaSyBK0FelMHtqS7Iml9GImoMgWrD8GuTS0SA";
+const GEMINI_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
-let user = {
-    message: null,
-    file: {
-        mime_type: null,
-        data: null
-    }
-};
+let userFile = null;
 
-async function generateResponse(aiChatBox) {
-    let text = aiChatBox.querySelector(".ai-chat-area");
+// ========= Chat Message Creation =========
+function appendMessage(message, type, imgSrc = null) {
+    const wrapper = document.createElement("div");
+    wrapper.classList.add(`${type}-chat-box`);
 
-    let RequestOption = {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [
-                {
-                    parts: [
-                        { text: user.message },
-                        ...(user.file.data ? [{ inline_data: user.file }] : [])
-                    ]
-                }
-            ]
-        })
+    const image = `<img src="${imgSrc}" id="${type === 'user' ? 'userImage' : 'aiImage'}" alt="${type}" width="10%">`;
+    const chatArea = `<div class="${type}-chat-area">${message}</div>`;
+
+    wrapper.innerHTML = image + chatArea;
+    chatContainer.appendChild(wrapper);
+    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: "smooth" });
+}
+
+// ========= Loading Animation =========
+function showLoading() {
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("ai-chat-box");
+    wrapper.innerHTML = `
+        <img src="img/ai.png" id="aiImage" width="10%">
+        <div class="ai-chat-area"><img src="img/loading1.gif" width="40px" /></div>
+    `;
+    chatContainer.appendChild(wrapper);
+    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: "smooth" });
+    return wrapper;
+}
+
+// ========= Send Message to Gemini API =========
+async function sendToGemini(userMessage) {
+    const loadingBox = showLoading();
+
+    const requestBody = {
+        contents: [
+            {
+                parts: [
+                    { text: userMessage },
+                    ...(userFile ? [{ inline_data: userFile }] : [])
+                ]
+            }
+        ]
     };
 
     try {
-        let response = await fetch(Api_Url, RequestOption);
-        let data = await response.json();
-        let apiResponse = data.candidates[0].content.parts[0].text.replace(/\*\*(.*?)\*\*/g, "$1").trim();
-        text.innerHTML = apiResponse;
-    } catch (error) {
-        console.log(error);
-        text.innerHTML = "Oops! Something went wrong. Try again.";
-    } finally {
-        chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: "smooth" });
-        image.src = `img.svg`;
-        image.classList.remove("choose");
-        user.file = {};
+        const res = await fetch(GEMINI_API, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody)
+        });
+
+        const data = await res.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+        loadingBox.querySelector(".ai-chat-area").innerHTML = reply || "Sorry, I didn't get that.";
+    } catch (err) {
+        console.error(err);
+        loadingBox.querySelector(".ai-chat-area").innerHTML = "Something went wrong. Try again.";
     }
+
+    userFile = null;
+    imagePreview.src = "img/img.svg";
+    imagePreview.classList.remove("choose");
 }
 
-function createChatBox(html, classes) {
-    let div = document.createElement("div");
-    div.innerHTML = html;
-    div.classList.add(classes);
-    return div;
-}
+// ========= Handle User Submission =========
+function handleUserMessage() {
+    const message = promptInput.value.trim();
+    if (!message) return;
 
-function handlechatResponse(userMessage) {
-    user.message = userMessage;
-
-    let html = `<img src="human2.png" alt="" id="userImage" width="8%">
-    <div class="user-chat-area">
-        ${user.message}
-        ${user.file.data ? `<img src="data:${user.file.mime_type};base64,${user.file.data}" class="chat-image" />` : ""}
-    </div>`;
-
-    prompt.value = "";
-
-    let userChatBox = createChatBox(html, "user-chat-box");
-    chatContainer.appendChild(userChatBox);
-
-    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: "smooth" });
-
-    setTimeout(() => {
-        let html = `<img src="ai.png" alt="" id="aiImage" width="10%">
-        <div class="ai-chat-area">
-            <img src="loading1.gif" alt="" class="load" width="50px">
-        </div>`;
-
-        let aiChatBox = createChatBox(html, "ai-chat-box");
-        chatContainer.appendChild(aiChatBox);
-        generateResponse(aiChatBox);
-    }, 600);
-}
-
-// Message send events
-prompt.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        handlechatResponse(prompt.value.trim());
+    // Show user message
+    let media = "";
+    if (userFile) {
+        media = `<br><img src="data:${userFile.mime_type};base64,${userFile.data}" class="chat-image">`;
     }
+
+    appendMessage(message + media, "user", "img/human2.png");
+
+    promptInput.value = "";
+    sendToGemini(message);
+}
+
+// ========= Event Listeners =========
+submitBtn.addEventListener("click", handleUserMessage);
+promptInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") handleUserMessage();
 });
 
-submitbtn.addEventListener("click", () => {
-    handlechatResponse(prompt.value.trim());
-});
+// ========= Image Upload =========
+imageBtn.addEventListener("click", () => imageInput.click());
 
-// Image input
-imageinput.addEventListener("change", () => {
-    const file = imageinput.files[0];
+imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
     if (!file) return;
 
-    let reader = new FileReader();
+    const reader = new FileReader();
     reader.onload = (e) => {
-        let base64string = e.target.result.split(",")[1];
-        user.file = {
+        const base64 = e.target.result.split(",")[1];
+        userFile = {
             mime_type: file.type,
-            data: base64string
+            data: base64
         };
-        image.src = `data:${user.file.mime_type};base64,${user.file.data}`;
-        image.classList.add("choose");
+        imagePreview.src = `data:${file.type};base64,${base64}`;
+        imagePreview.classList.add("choose");
     };
     reader.readAsDataURL(file);
 });
 
-imagebtn.addEventListener("click", () => {
-    imagebtn.querySelector("input").click();
-});
-
-// -------------------- VOICE RECOGNITION ------------------------
-
-let recognition;
-
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+// ========= Voice Input =========
+if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-US";
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    recognition.onstart = () => {
-        console.log("Voice recognition started");
-        prompt.placeholder = "Listening...";
+    recognition.onstart = () => promptInput.placeholder = "Listening...";
+    recognition.onresult = (e) => {
+        promptInput.value = e.results[0][0].transcript;
+        promptInput.placeholder = "Type a message...";
     };
-
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        prompt.value = transcript;
-        prompt.placeholder = "Type a message...";
+    recognition.onerror = (e) => {
+        console.error(e);
+        promptInput.placeholder = "Error. Try again.";
     };
+    recognition.onend = () => promptInput.placeholder = "Type a message...";
 
-    recognition.onerror = (event) => {
-        console.error("Voice recognition error:", event.error);
-        prompt.placeholder = "Type a message...";
-        alert("Voice recognition error: " + event.error);
-    };
-
-    recognition.onend = () => {
-        console.log("Voice recognition ended");
-        prompt.placeholder = "Type a message...";
-    };
-
-    if (startVoiceBtn) {
-        startVoiceBtn.addEventListener("click", () => {
-            recognition.start();
-        });
-    }
-
-    if (stopVoiceBtn) {
-        stopVoiceBtn.addEventListener("click", () => {
-            recognition.stop();
-        });
-    }
-
+    startVoiceBtn.addEventListener("click", () => recognition.start());
+    stopVoiceBtn.addEventListener("click", () => recognition.stop());
 } else {
-    alert("Sorry! Voice recognition is not supported in this browser. Try using Chrome or Edge.");
+    alert("Your browser doesn't support voice input. Try Chrome or Edge.");
 }
